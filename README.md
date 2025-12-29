@@ -3,9 +3,37 @@
 ## Overview
 A high-performance, synchronized image comparison viewer built with Python (PyQt6). Supports 8K images, scientific TIFFs, and advanced inspection tools (Zoom/Pan/Interpolation).
 
+## Installation
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/dai1741/Side-by-Side-Image-Viewer.git
+    cd Side-by-Side-Image-Viewer
+    ```
+2.  **Set up Virtual Environment**:
+    ```bash
+    python -m venv .venv
+    # Windows:
+    .\.venv\Scripts\Activate.ps1
+    # Mac/Linux:
+    source .venv/bin/activate
+    ```
+3.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
 ## How to Run
-1.  **Run the Executable**:
-    Open the `build` folder and run `ImageComparisonViewer.exe`.
+### Option 1: Run from Source
+```bash
+python main.py
+```
+
+### Option 2: Build Executable
+To create a standalone `.exe`:
+```bash
+python setup.py build
+```
+Then open the created `build/exe.win-amd64-.../` folder and launch `ImageComparisonViewer.exe`.
 
 ## Controls & Features
 | Category | Action | Key / Control |
