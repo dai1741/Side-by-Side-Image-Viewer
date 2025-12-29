@@ -13,13 +13,14 @@ A high-performance, synchronized image comparison viewer built with Python (PyQt
 | **Navigation** | Sync Next/Prev | `Right Arrow` / `Left Arrow` |
 | | Left Only | `D` (Next), `A` (Prev) |
 | | Right Only | `L` (Next), `J` (Prev) |
-| | Jump to Index | Type number in "Index:" box + Enter |
+| | Jump to Index | Type number in **L:** or **R:** box (updates immediately) |
 | **View** | Zoom | **Mouse Wheel** |
 | | Pan | **Drag Mouse** (Left click and scroll/drag) |
-| | Context Menu | **Right Click** on image |
+| | Context Menu | **Right Click** on image (Copy Path, Open, etc.) |
 | | Interpolation | Select "Nearest" (Pixelated) or "Bilinear" (Smooth) from dropdown |
 | | Pixel Info | **Hover** mouse over image to see X, Y, and RGB values at bottom |
-| **Tools** | Copy Paths | Click **Copy Paths** button |
+| **Tools** | **Filter Images** | Type Regex in **Filter...** box (next to Load button) |
+| | **Unfocus Inputs**| Press **Escape** while typing in ANY box to return focus to navigation |
 | **Files** | Load Folder | Click "Load" button or use History arrow |
 | | Close Folder | Click **Arrow** on Load button -> **Close Folder** |
 | | History | Click the small **Arrow** on Load button |
