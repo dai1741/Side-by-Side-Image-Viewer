@@ -76,7 +76,7 @@ class MainWindow(QMainWindow):
         self.lbl_files_status = QLabel("0 / 0")
         self.lbl_files_status.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.lbl_files_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_files_status.setFixedWidth(100) # Fixed width prevents jitter
+        self.lbl_files_status.setFixedWidth(150) # Fixed width prevents jitter
 
         # Right Load Button
         self.btn_load_b = QToolButton()
