@@ -105,11 +105,13 @@ class ImagePanel(QWidget):
         
         self.layout.addWidget(self.view)
         
-        self.current_loader = None
         self.current_path = None
         self.current_image = None
         self.current_interpolation = Qt.TransformationMode.FastTransformation
         self.load_id = 0 
+        
+        # Keep track of active loaders to prevent GC
+        self._active_loaders = set()
 
     def eventFilter(self, source, event):
         if source == self.view.viewport():
@@ -152,9 +154,6 @@ class ImagePanel(QWidget):
         # Increment load ID to invalidate previous renders
         self.load_id += 1
         
-        # We do NOT terminate the old thread forcefully to avoid freezes.
-        # We just let it finish and ignore its result.
-        
         self.current_path = file_path
         if not file_path:
             self.pixmap_item.setPixmap(QPixmap())
@@ -163,9 +162,17 @@ class ImagePanel(QWidget):
             return
 
         # Start new load
-        self.current_loader = ImageLoader(file_path, self.load_id)
-        self.current_loader.image_loaded.connect(self._on_image_loaded)
-        self.current_loader.start()
+        loader = ImageLoader(file_path, self.load_id)
+        loader.image_loaded.connect(self._on_image_loaded)
+        # Clean up reference when finished
+        loader.finished.connect(lambda: self._cleanup_loader(loader))
+        
+        self._active_loaders.add(loader)
+        loader.start()
+
+    def _cleanup_loader(self, loader):
+        if loader in self._active_loaders:
+            self._active_loaders.remove(loader)
 
     def _on_image_loaded(self, qimg, path, loaded_id):
         # Ignore if this result is from an old, superseded load request

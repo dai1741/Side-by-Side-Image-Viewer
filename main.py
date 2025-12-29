@@ -1,15 +1,30 @@
 import sys
 import os
 import glob
+import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QFileDialog, QSplitter,
-                             QToolButton, QMenu, QSizePolicy, QComboBox, QSpinBox)
+                             QToolButton, QMenu, QSizePolicy, QComboBox, QSpinBox, QLineEdit)
 from PyQt6.QtGui import QAction, QActionGroup, QFontMetrics
 from PyQt6.QtCore import Qt, QSettings
 from components.image_panel import ImagePanel
 
 # Supported extensions
 IMG_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff'}
+
+class FocusClearLineEdit(QLineEdit):
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
+
+class FocusClearSpinBox(QSpinBox):
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -27,8 +42,10 @@ class MainWindow(QMainWindow):
         # State
         self.folder_a = None
         self.folder_b = None
-        self.files_a = []
-        self.files_b = []
+        self.all_files_a = [] # Complete list
+        self.all_files_b = [] # Complete list
+        self.files_a = [] # Filtered list
+        self.files_b = [] # Filtered list
         self.current_index_a = 0
         self.current_index_b = 0
 
@@ -40,7 +57,12 @@ class MainWindow(QMainWindow):
         # Top Control Bar
         control_bar = QHBoxLayout()
         
-        # Left Load Button
+        # Left Controls
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(2)
+        
+        # Row 1: Load + Filter
+        left_row1 = QHBoxLayout()
         self.btn_load_a = QToolButton()
         self.btn_load_a.setText("Load Left")
         self.btn_load_a.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
@@ -49,36 +71,70 @@ class MainWindow(QMainWindow):
         self.btn_load_a.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_load_a.setStyleSheet("background-color: #333; padding: 5px; border-radius: 4px; color: white;")
         
+        self.txt_filter_a = FocusClearLineEdit()
+        self.txt_filter_a.setPlaceholderText("Filter (Regex)...")
+        self.txt_filter_a.setStyleSheet("background-color: #222; color: #ddd; border: 1px solid #444; border-radius: 3px; padding: 2px;")
+        self.txt_filter_a.setFixedWidth(150) 
+        self.txt_filter_a.textChanged.connect(lambda: self.apply_filter('A'))
+
+        left_row1.addWidget(self.btn_load_a)
+        left_row1.addWidget(self.txt_filter_a)
+
         self.lbl_filename_a = QLabel("")
         self.lbl_filename_a.setStyleSheet("color: #aaa; font-size: 11px;")
-        self.lbl_filename_a.setFixedWidth(250)
+        self.lbl_filename_a.setFixedWidth(250) 
         self.lbl_filename_a.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        left_layout.addLayout(left_row1)
+        left_layout.addWidget(self.lbl_filename_a)
         
         # Middle Controls
-        self.btn_copy_path = QPushButton("Copy Paths")
-        self.btn_copy_path.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.btn_copy_path.setStyleSheet("background-color: #444; padding: 5px; border-radius: 4px;")
-        self.btn_copy_path.clicked.connect(self.copy_current_paths)
-
-        self.spin_index = QSpinBox()
-        self.spin_index.setPrefix("Index: ")
-        self.spin_index.setRange(1, 99999)
-        self.spin_index.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.spin_index.setStyleSheet("background-color: #333; color: white; padding: 5px;")
-        self.spin_index.editingFinished.connect(self.jump_to_index)
-
+        middle_layout = QHBoxLayout()
+        
+        # Interpolation
         self.combo_interp = QComboBox()
         self.combo_interp.addItems(["Nearest", "Bilinear"])
         self.combo_interp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.combo_interp.setStyleSheet("background-color: #333; color: white; padding: 5px;")
         self.combo_interp.currentTextChanged.connect(self.change_interpolation)
+        
+        # L Index
+        lbl_l = QLabel("L:")
+        lbl_l.setStyleSheet("font-weight: bold; color: #bbb;")
+        self.spin_index_a = FocusClearSpinBox()
+        self.spin_index_a.setRange(1, 1)
+        self.spin_index_a.setFixedWidth(70)
+        self.spin_index_a.setStyleSheet("background-color: #333; color: white; padding: 5px;")
+        self.spin_index_a.valueChanged.connect(lambda: self.jump_to_index('A'))
+        self.lbl_total_a = QLabel("/ 0")
+        self.lbl_total_a.setFixedWidth(50)
 
-        self.lbl_files_status = QLabel("0 / 0")
-        self.lbl_files_status.setStyleSheet("font-weight: bold; font-size: 14px;")
-        self.lbl_files_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_files_status.setFixedWidth(150) # Fixed width prevents jitter
+        # R Index
+        lbl_r = QLabel("R:")
+        lbl_r.setStyleSheet("font-weight: bold; color: #bbb; margin-left: 10px;")
+        self.spin_index_b = FocusClearSpinBox()
+        self.spin_index_b.setRange(1, 1)
+        self.spin_index_b.setFixedWidth(70)
+        self.spin_index_b.setStyleSheet("background-color: #333; color: white; padding: 5px;")
+        self.spin_index_b.valueChanged.connect(lambda: self.jump_to_index('B'))
+        self.lbl_total_b = QLabel("/ 0")
+        self.lbl_total_b.setFixedWidth(50)
 
-        # Right Load Button
+        middle_layout.addWidget(self.combo_interp)
+        middle_layout.addSpacing(20)
+        middle_layout.addWidget(lbl_l)
+        middle_layout.addWidget(self.spin_index_a)
+        middle_layout.addWidget(self.lbl_total_a)
+        middle_layout.addWidget(lbl_r)
+        middle_layout.addWidget(self.spin_index_b)
+        middle_layout.addWidget(self.lbl_total_b)
+
+        # Right Controls
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(2)
+        
+        # Row 1: Load + Filter
+        right_row1 = QHBoxLayout()
         self.btn_load_b = QToolButton()
         self.btn_load_b.setText("Load Right")
         self.btn_load_b.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
@@ -87,24 +143,29 @@ class MainWindow(QMainWindow):
         self.btn_load_b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_load_b.setStyleSheet("background-color: #333; padding: 5px; border-radius: 4px; color: white;")
 
+        self.txt_filter_b = FocusClearLineEdit()
+        self.txt_filter_b.setPlaceholderText("Filter (Regex)...")
+        self.txt_filter_b.setStyleSheet("background-color: #222; color: #ddd; border: 1px solid #444; border-radius: 3px; padding: 2px;")
+        self.txt_filter_b.setFixedWidth(150)
+        self.txt_filter_b.textChanged.connect(lambda: self.apply_filter('B'))
+
+        right_row1.addWidget(self.btn_load_b)
+        right_row1.addWidget(self.txt_filter_b)
+
         self.lbl_filename_b = QLabel("")
         self.lbl_filename_b.setStyleSheet("color: #aaa; font-size: 11px;")
-        self.lbl_filename_b.setFixedWidth(250) # Fixed width
+        self.lbl_filename_b.setFixedWidth(250)
         self.lbl_filename_b.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Add to Layout
-        control_bar.addWidget(self.btn_load_a)
-        control_bar.addWidget(self.lbl_filename_a)
+        right_layout.addLayout(right_row1)
+        right_layout.addWidget(self.lbl_filename_b)
+
+        # Add to Main Control Bar
+        control_bar.addLayout(left_layout)
         control_bar.addStretch()
-        
-        control_bar.addWidget(self.btn_copy_path)
-        control_bar.addWidget(self.spin_index)
-        control_bar.addWidget(self.combo_interp)
-        control_bar.addWidget(self.lbl_files_status)
-        
+        control_bar.addLayout(middle_layout)
         control_bar.addStretch()
-        control_bar.addWidget(self.lbl_filename_b)
-        control_bar.addWidget(self.btn_load_b)
+        control_bar.addLayout(right_layout)
 
         main_layout.addLayout(control_bar)
 
@@ -125,12 +186,12 @@ class MainWindow(QMainWindow):
         info_layout = QHBoxLayout()
         self.lbl_info_a = QLabel("")
         self.lbl_info_a.setStyleSheet("color: #0bd; font-family: monospace; font-size: 14px;")
-        self.lbl_info_a.setFixedWidth(400) # Fixed width for info
+        self.lbl_info_a.setFixedWidth(400) 
         
         self.lbl_info_b = QLabel("")
         self.lbl_info_b.setStyleSheet("color: #0bd; font-family: monospace; font-size: 14px;")
         self.lbl_info_b.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.lbl_info_b.setFixedWidth(400) # Fixed width for info
+        self.lbl_info_b.setFixedWidth(400) 
         
         info_layout.addWidget(self.lbl_info_a)
         info_layout.addStretch()
@@ -142,6 +203,9 @@ class MainWindow(QMainWindow):
         instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         instruction_label.setStyleSheet("color: #666; font-size: 12px; margin-top: 5px;")
         main_layout.addWidget(instruction_label)
+        
+        # Ensure main window has focus at startup, preventing filters from stealing it
+        self.setFocus()
 
     def elide_text(self, text, max_len=40):
         if len(text) <= max_len:
@@ -180,16 +244,20 @@ class MainWindow(QMainWindow):
     def close_folder(self, side):
         if side == 'A':
             self.folder_a = None
+            self.all_files_a = []
             self.files_a = []
             self.current_index_a = 0
             self.btn_load_a.setText("Load Left")
+            self.txt_filter_a.clear()
             self.panel_a.load_image(None)
             self.lbl_filename_a.setText("")
         else:
             self.folder_b = None
+            self.all_files_b = []
             self.files_b = []
             self.current_index_b = 0
             self.btn_load_b.setText("Load Right")
+            self.txt_filter_b.clear()
             self.panel_b.load_image(None)
             self.lbl_filename_b.setText("")
         self.update_images()
@@ -212,17 +280,15 @@ class MainWindow(QMainWindow):
         self.add_to_recent(folder)
         if side == 'A':
             self.folder_a = folder
-            self.files_a = self.get_image_files(folder)
-            self.current_index_a = 0
+            self.all_files_a = self.get_image_files(folder)
+            self.apply_filter('A') # This will set self.files_a
             self.btn_load_a.setText(os.path.basename(folder))
         else:
             self.folder_b = folder
-            self.files_b = self.get_image_files(folder)
-            self.current_index_b = 0
+            self.all_files_b = self.get_image_files(folder)
+            self.apply_filter('B') # This will set self.files_b
             self.btn_load_b.setText(os.path.basename(folder))
         
-        self.update_images()
-
     def get_image_files(self, folder):
         files = []
         try:
@@ -235,25 +301,58 @@ class MainWindow(QMainWindow):
             print(f"Error reading folder {folder}: {e}")
         return files
 
+    def apply_filter(self, side):
+        if side == 'A':
+            pattern = self.txt_filter_a.text()
+            source_files = self.all_files_a
+        else:
+            pattern = self.txt_filter_b.text()
+            source_files = self.all_files_b
+            
+        filtered = []
+        try:
+            for f in source_files:
+                filename = os.path.basename(f)
+                if not pattern or re.search(pattern, filename):
+                    filtered.append(f)
+        except re.error:
+            print(f"Invalid regex: {pattern}")
+            filtered = source_files 
+
+        if side == 'A':
+            self.files_a = filtered
+            self.current_index_a = 0
+        else:
+            self.files_b = filtered
+            self.current_index_b = 0
+            
+        self.update_images()
+
     def update_images(self):
         len_a = len(self.files_a)
         len_b = len(self.files_b)
         
-        status_text = f"L: {self.current_index_a + 1}/{len_a} | R: {self.current_index_b + 1}/{len_b}"
-        if len_a == 0 and len_b == 0:
-            status_text = "0 / 0"
-        self.lbl_files_status.setText(status_text)
-        
-        max_len = max(len_a, len_b)
-        if max_len > 0:
-            self.spin_index.setMaximum(max_len)
-            idx = self.current_index_a if len_a > 0 else self.current_index_b
-            self.spin_index.blockSignals(True)
-            self.spin_index.setValue(idx + 1)
-            self.spin_index.blockSignals(False)
+        # Update Status A
+        self.lbl_total_a.setText(f"/ {len_a}")
+        if len_a > 0:
+            self.spin_index_a.setMaximum(len_a)
+            self.spin_index_a.blockSignals(True)
+            self.spin_index_a.setValue(self.current_index_a + 1)
+            self.spin_index_a.blockSignals(False)
         else:
-            self.spin_index.setMaximum(1)
-            self.spin_index.setValue(1)
+            self.spin_index_a.setMaximum(1)
+            self.spin_index_a.setValue(0) # 0 to indicate empty
+        
+        # Update Status B
+        self.lbl_total_b.setText(f"/ {len_b}")
+        if len_b > 0:
+            self.spin_index_b.setMaximum(len_b)
+            self.spin_index_b.blockSignals(True)
+            self.spin_index_b.setValue(self.current_index_b + 1)
+            self.spin_index_b.blockSignals(False)
+        else:
+            self.spin_index_b.setMaximum(1)
+            self.spin_index_b.setValue(0)
 
         # Update Image A
         if self.current_index_a < len_a:
@@ -273,32 +372,25 @@ class MainWindow(QMainWindow):
             self.panel_b.load_image(None)
             self.lbl_filename_b.setText("")
 
-    def copy_current_paths(self):
-        paths = []
-        if self.current_index_a < len(self.files_a):
-            paths.append(self.files_a[self.current_index_a])
-        if self.current_index_b < len(self.files_b):
-            paths.append(self.files_b[self.current_index_b])
-        
-        if paths:
-            text = "\n".join(paths)
-            QApplication.clipboard().setText(text)
-            self.btn_copy_path.setText("Copied!")
-
-    def jump_to_index(self):
-        val = self.spin_index.value() - 1 
+    def jump_to_index(self, side):
         changed = False
-        if val >= 0 and val < len(self.files_a):
-            self.current_index_a = val
-            changed = True
-        if val >= 0 and val < len(self.files_b):
-            self.current_index_b = val
-            changed = True
+        if side == 'A':
+            val = self.spin_index_a.value() - 1
+            if val >= 0 and val < len(self.files_a):
+                self.current_index_a = val
+                changed = True
+        else:
+            val = self.spin_index_b.value() - 1
+            if val >= 0 and val < len(self.files_b):
+                self.current_index_b = val
+                changed = True
         
         if changed:
             self.update_images()
-        self.spin_index.clearFocus()
-        self.setFocus()
+        
+        # We don't need to clear focus here anymore since valueChanged works while typing
+        # and we want to keep typing. If we clear focus, it disrupts typing.
+        # self.setFocus() # Removed to keep focus in spinbox
 
     def change_interpolation(self, text):
         self.panel_a.set_interpolation_mode(text)
