@@ -4,3 +4,4 @@ tifffile
 imagecodecs
 Pillow
 pywin32
+cx_Freeze
