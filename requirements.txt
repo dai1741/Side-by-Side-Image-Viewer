@@ -3,3 +3,4 @@ numpy
 tifffile
 imagecodecs
 Pillow
+pywin32
